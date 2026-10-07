@@ -220,13 +220,55 @@ const App: React.FC = () => {
     return 0;
   };
 
-  const getFirstTestStep = (selected: SelectedTests) => {
-    if (selected.balance) return AppStep.T1_PARALLEL_INTRO;
-    if (selected.walk) return AppStep.T2_WALK_INTRO;
-    if (selected.chair) return AppStep.T3_CHAIR_INTRO;
-    if (selected.tug) return AppStep.T4_TUG_INTRO;
-    if (selected.walk6m) return AppStep.T5_WALK6M_INTRO;
+  type TestKey = 'balance' | 'walk' | 'chair' | 'tug' | 'walk6m';
+
+  const TEST_ORDER: TestKey[] = ['balance', 'walk', 'chair', 'tug', 'walk6m'];
+
+  const TEST_INTRO_STEPS: Record<TestKey, AppStep> = {
+    balance: AppStep.T1_PARALLEL_INTRO,
+    walk: AppStep.T2_WALK_INTRO,
+    chair: AppStep.T3_CHAIR_INTRO,
+    tug: AppStep.T4_TUG_INTRO,
+    walk6m: AppStep.T5_WALK6M_INTRO,
+  };
+
+  const getFirstTestStep = (selected: SelectedTests): AppStep => {
+    for (const key of TEST_ORDER) {
+      if (selected[key]) return TEST_INTRO_STEPS[key];
+    }
     return AppStep.RESULTS;
+  };
+
+  const getNextTestStep = (currentTest: TestKey, selected: SelectedTests): AppStep => {
+    const currentIndex = TEST_ORDER.indexOf(currentTest);
+    for (let i = currentIndex + 1; i < TEST_ORDER.length; i++) {
+      const nextKey = TEST_ORDER[i];
+      if (selected[nextKey]) {
+        return TEST_INTRO_STEPS[nextKey];
+      }
+    }
+    return AppStep.RESULTS;
+  };
+
+  const getPrevTestStep = (currentTest: TestKey, selected: SelectedTests): AppStep => {
+    const currentIndex = TEST_ORDER.indexOf(currentTest);
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const prevKey = TEST_ORDER[i];
+      if (selected[prevKey]) {
+        return prevKey === 'balance' ? AppStep.T1_TANDEM_INTRO : TEST_INTRO_STEPS[prevKey];
+      }
+    }
+    return AppStep.POSITIONING;
+  };
+
+  const handleSkipTest = (currentTest: TestKey) => {
+    const nextStep = getNextTestStep(currentTest, selectedTests);
+    if (nextStep === AppStep.RESULTS) {
+      speak("已跳過此項測試。即將顯示評估結果。");
+    } else {
+      speak("已跳過此項測試。接下來進行下一個測試。");
+    }
+    setStep(nextStep);
   };
 
   if (!dbLoaded) {
@@ -514,8 +556,7 @@ const App: React.FC = () => {
             onBack={() => setStep(AppStep.POSITIONING)} 
             onSkip={() => {
               setResults(r => ({ ...r, balanceScore: 0, rawBalanceSideBySide: 0 }));
-              speak("已跳過此項測試。接下來進行下一個測試。");
-              setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+              handleSkipTest('balance');
             }}
             speak={speak} 
           />
@@ -527,7 +568,7 @@ const App: React.FC = () => {
           
           if (!passed) {
             speak("並排站立未達10秒，平衡測試結束。接下來進行下一個測試。");
-            setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+            setStep(getNextTestStep('balance', selectedTests));
           } else {
             setStep(AppStep.T1_SEMI_INTRO);
           }
@@ -543,8 +584,7 @@ const App: React.FC = () => {
             onBack={() => setStep(AppStep.T1_PARALLEL_INTRO)} 
             onSkip={() => {
               setResults(r => ({ ...r, rawBalanceSemiTandem: 0 }));
-              speak("已跳過此項測試。接下來進行下一個測試。");
-              setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+              handleSkipTest('balance');
             }}
             speak={speak} 
           />
@@ -556,7 +596,7 @@ const App: React.FC = () => {
           
           if (!passed) {
             speak("半並排站立未達10秒，平衡測試結束。接下來進行下一個測試。");
-            setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+            setStep(getNextTestStep('balance', selectedTests));
           } else {
             setStep(AppStep.T1_TANDEM_INTRO);
           }
@@ -572,8 +612,7 @@ const App: React.FC = () => {
             onBack={() => setStep(AppStep.T1_SEMI_INTRO)} 
             onSkip={() => {
               setResults(r => ({ ...r, rawBalanceTandem: 0 }));
-              speak("已跳過此項測試。接下來進行下一個測試。");
-              setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+              handleSkipTest('balance');
             }}
             speak={speak} 
           />
@@ -585,7 +624,7 @@ const App: React.FC = () => {
           
           setResults(r => ({ ...r, balanceScore: r.balanceScore + score, rawBalanceTandem: seconds }));
           speak("平衡測試結束。接下來進行下一個測試。");
-          setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS));
+          setStep(getNextTestStep('balance', selectedTests));
         }} onCancel={() => setStep(AppStep.HOME)} speak={speak} />}
 
         {/* Test 2: Walk */}
@@ -595,11 +634,10 @@ const App: React.FC = () => {
             title={`測試 2：步行速度測試 (${walkTrial}/2)`} 
             description="請以正常速度行走 4 公尺。系統將進行兩次測量並取最快時間。" 
             onStart={() => setStep(AppStep.T2_WALK_EXEC)} 
-            onBack={() => setStep(selectedTests.balance ? AppStep.T1_TANDEM_INTRO : AppStep.POSITIONING)} 
+            onBack={() => setStep(getPrevTestStep('walk', selectedTests))} 
             onSkip={() => {
               setResults(r => ({ ...r, walkScore: 0, rawWalkTime: 0, walkTrial1: 0, walkTrial2: 0 }));
-              speak("已跳過此項測試。接下來進行下一個測試。");
-              setStep(selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS);
+              handleSkipTest('walk');
             }}
             speak={speak} 
           />
@@ -616,7 +654,7 @@ const App: React.FC = () => {
               return { ...r, walkTrial2: time, rawWalkTime: bestTime, walkScore: calculateWalkScore(bestTime) };
             });
             setWalkTrial(1); // Reset for next time
-            setStep(selectedTests.chair ? AppStep.T3_CHAIR_INTRO : AppStep.RESULTS);
+            setStep(getNextTestStep('walk', selectedTests));
           }
         }} onCancel={() => {
           setStep(AppStep.HOME);
@@ -630,18 +668,17 @@ const App: React.FC = () => {
             title="測試 3：從椅子起身測試" 
             description="雙手放鬆放下，不要撐大腿，以最快速度完成起立坐下 5 次。系統測量總時間。" 
             onStart={() => setStep(AppStep.T3_CHAIR_EXEC)} 
-            onBack={() => setStep(selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.balance ? AppStep.T1_TANDEM_INTRO : AppStep.POSITIONING))} 
+            onBack={() => setStep(getPrevTestStep('chair', selectedTests))} 
             onSkip={() => {
               setResults(r => ({ ...r, chairScore: 0, rawChairTime: 0 }));
-              speak("已跳過此項測試。即將顯示評估結果。");
-              setStep(AppStep.RESULTS);
+              handleSkipTest('chair');
             }}
             speak={speak} 
           />
         )}
         {step === AppStep.T3_CHAIR_EXEC && <TestExecView settings={settings} mode="counter" targetCount={5} onComplete={(time, details) => {
           setResults(r => ({ ...r, rawChairTime: time, chairScore: calculateChairScore(time), chairReps: details }));
-          setStep(selectedTests.tug ? AppStep.T4_TUG_INTRO : (selectedTests.walk6m ? AppStep.T5_WALK6M_INTRO : AppStep.RESULTS));
+          setStep(getNextTestStep('chair', selectedTests));
         }} onCancel={() => setStep(AppStep.MAIN_MENU)} speak={speak} />}
         
         {/* Test 4: TUG (起立行走測試) */}
@@ -651,11 +688,10 @@ const App: React.FC = () => {
             title="測試 4：起立行走測試 (TUG)" 
             description="從椅子起身走 3 公尺，轉身回到椅子坐下。系統將自動偵測起身與坐下時間。" 
             onStart={() => setStep(AppStep.T4_TUG_EXEC)} 
-            onBack={() => setStep(selectedTests.chair ? AppStep.T3_CHAIR_INTRO : (selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.balance ? AppStep.T1_TANDEM_INTRO : AppStep.POSITIONING)))} 
+            onBack={() => setStep(getPrevTestStep('tug', selectedTests))} 
             onSkip={() => {
               setResults(r => ({ ...r, rawTugTime: 0 }));
-              speak("已跳過此項測試。接下來進行下一個測試。");
-              setStep(selectedTests.walk6m ? AppStep.T5_WALK6M_INTRO : AppStep.RESULTS);
+              handleSkipTest('tug');
             }}
             speak={speak} 
           />
@@ -663,7 +699,7 @@ const App: React.FC = () => {
         {step === AppStep.T4_TUG_EXEC && <TestExecView settings={settings} mode="tug" onComplete={(time) => {
           setResults(r => ({ ...r, rawTugTime: time }));
           speak(`測試完成，時間為 ${time.toFixed(1)} 秒。`);
-          setStep(selectedTests.walk6m ? AppStep.T5_WALK6M_INTRO : AppStep.RESULTS);
+          setStep(getNextTestStep('tug', selectedTests));
         }} onCancel={() => setStep(AppStep.MAIN_MENU)} speak={speak} />}
 
         {/* Test 5: 6m Walk */}
@@ -673,11 +709,10 @@ const App: React.FC = () => {
             title={`測試 5：6公尺步行測試 (${walk6mTrial}/2)`} 
             description="請以正常步速行走 6 公尺。系統將測量兩次並取最短時間。超過 7.5 秒表示有跌倒風險。" 
             onStart={() => setStep(AppStep.T5_WALK6M_EXEC)} 
-            onBack={() => setStep(selectedTests.tug ? AppStep.T4_TUG_INTRO : (selectedTests.chair ? AppStep.T3_CHAIR_INTRO : (selectedTests.walk ? AppStep.T2_WALK_INTRO : (selectedTests.balance ? AppStep.T1_TANDEM_INTRO : AppStep.POSITIONING))))} 
+            onBack={() => setStep(getPrevTestStep('walk6m', selectedTests))} 
             onSkip={() => {
               setResults(r => ({ ...r, rawWalk6mTime: 0 }));
-              speak("已跳過此項測試。即將顯示評估結果。");
-              setStep(AppStep.RESULTS);
+              handleSkipTest('walk6m');
             }}
             speak={speak} 
           />
@@ -694,7 +729,7 @@ const App: React.FC = () => {
               return { ...r, rawWalk6mTime: best6m };
             });
             setWalk6mTrial(1);
-            setStep(AppStep.RESULTS);
+            setStep(getNextTestStep('walk6m', selectedTests));
           }
         }} onCancel={() => {
           setStep(AppStep.MAIN_MENU);

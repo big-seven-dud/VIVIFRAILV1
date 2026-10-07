@@ -184,11 +184,10 @@ def handle_post_sync(payload: SyncPayload):
         # A. 寫入與更新長輩名冊
         for u in payload.users:
             safe_email = u.email if u.email else f"{u.uid}@vivifrail.local"
-            # 轉換創建時間：兼容量化 timestamp (bigint) 與 timestamp without time zone
-            user_created_dt = datetime.fromtimestamp((u.createdAt or int(datetime.utcnow().timestamp() * 1000)) / 1000.0)
+            # 依規則：sppb_users.created_at 為毫秒整數 (BIGINT)，不寫入 datetime
+            user_created_at = int(u.createdAt if u.createdAt is not None else int(datetime.utcnow().timestamp() * 1000))
             
             # 使用 PostgreSQL ON CONFLICT 做 UPSERT (存在就更新, 不存在就插入)
-            # 兼容 created_at 欄位為 TIMESTAMP 或 BIGINT
             cur.execute("""
                 INSERT INTO sppb_users (uid, display_name, email, age, gender, height, weight, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -197,7 +196,7 @@ def handle_post_sync(payload: SyncPayload):
                     age = EXCLUDED.age,
                     height = EXCLUDED.height,
                     weight = EXCLUDED.weight;
-            """, (u.uid, u.displayName, safe_email, u.age, u.gender, u.height, u.weight, user_created_dt))
+            """, (u.uid, u.displayName, safe_email, u.age, u.gender, u.height, u.weight, user_created_at))
 
         # B. 寫入歷史檢測紀錄 (過濾重複上傳，防止 records 重複疊加)
         inserted_records = 0
@@ -205,8 +204,9 @@ def handle_post_sync(payload: SyncPayload):
             if not r.user or not r.user.uid:
                 continue
             
-            # 解析時間格式
+            # 只有 record_date 是 TIMESTAMP，因此 record_date 才使用 datetime
             record_dt = datetime.fromtimestamp(r.timestamp / 1000.0)
+            record_created_at = int(r.timestamp)
             
             # 轉換詳細欄位值
             det = r.details or {}
@@ -247,7 +247,7 @@ def handle_post_sync(payload: SyncPayload):
                     balance_score, walk_score, chair_score,
                     raw_walk_time, raw_chair_time,
                     raw_balance_side_by_side, raw_balance_semi_tandem, raw_balance_tandem,
-                    additional_details_str, record_dt
+                    additional_details_str, record_created_at
                 ))
                 inserted_records += 1
 

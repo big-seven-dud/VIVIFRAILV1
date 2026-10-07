@@ -259,7 +259,14 @@ export const LocalDbService = {
 
   registerUser: (profile: UserProfile) => {
     const users = LocalDbService.getUsers();
-    if (users.find(u => u.email === profile.email)) throw new Error('Email already registered');
+    const queryEmail = (profile.email || '').trim().toLowerCase();
+    const queryUid = (profile.uid || '').trim().toLowerCase();
+    if (users.find(u => 
+      (u.email && u.email.toLowerCase() === queryEmail) || 
+      (u.uid && u.uid.toLowerCase() === queryUid)
+    )) {
+      throw new Error('受測者代碼或 Email 已被註冊使用');
+    }
     
     // Save to cache
     users.push(profile);
@@ -273,7 +280,10 @@ export const LocalDbService = {
   loginUser: (emailOrUid: string, _password?: string): UserProfile | null => {
     const users = LocalDbService.getUsers();
     const query = (emailOrUid || '').trim().toLowerCase();
-    const user = users.find(u => u.email.toLowerCase() === query || u.uid === (emailOrUid || '').trim());
+    const user = users.find(u => 
+      (u.email && u.email.toLowerCase() === query) || 
+      (u.uid && u.uid.toLowerCase() === query)
+    );
     if (!user) return null;
     
     // Retain localStorage session for persistence across refresh

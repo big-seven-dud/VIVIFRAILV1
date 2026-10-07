@@ -26,9 +26,10 @@ const RegisterView: React.FC<Props> = ({ onRegisterSuccess, onGoToLogin }) => {
     }
 
     try {
+      const codeOrEmail = email.trim();
       const profile: UserProfile = {
-        uid: 'user-' + Date.now(),
-        email: email.trim(),
+        uid: codeOrEmail,
+        email: codeOrEmail,
         displayName: name.trim(),
         age: parseInt(age),
         height: parseFloat(height),
@@ -43,8 +44,8 @@ const RegisterView: React.FC<Props> = ({ onRegisterSuccess, onGoToLogin }) => {
       onRegisterSuccess(profile);
     } catch (err: any) {
       console.log('Register Error:', err.message);
-      if (err.message === 'Email already registered') {
-        setError('此電子郵件已被註冊使用');
+      if (err.message === 'Email already registered' || err.message?.includes('已被註冊')) {
+        setError('此受測者代碼或 Email 已被註冊使用');
       } else {
         setError(`註冊失敗：${err.message || '請檢查輸入資訊'}`);
       }
@@ -126,13 +127,13 @@ const RegisterView: React.FC<Props> = ({ onRegisterSuccess, onGoToLogin }) => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xl font-bold text-slate-700 ml-4">電子郵件 / 受測者代碼</label>
+          <label className="text-xl font-bold text-slate-700 ml-4">受測者代碼 / Email 身分識別</label>
           <input 
-            type="email" 
+            type="text" 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full p-6 rounded-[30px] border-4 border-slate-100 focus:border-blue-500 outline-none text-2xl font-bold"
-            placeholder="example@mail.com"
+            placeholder="例如：A001 或 user@mail.com"
             required
           />
         </div>

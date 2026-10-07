@@ -161,13 +161,13 @@ const LoginView: React.FC<Props> = ({ onLoginSuccess, onGoToRegister }) => {
           )}
 
           <div className="space-y-2">
-            <label className="text-xl font-bold text-slate-700 ml-4">受測者 Email / 帳號識別</label>
+            <label className="text-xl font-bold text-slate-700 ml-4">受測者代碼 / Email 身分識別</label>
             <input 
               type="text" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-6 rounded-[30px] border-4 border-slate-100 focus:border-blue-500 outline-none text-2xl font-bold"
-              placeholder="example@mail.com"
+              placeholder="例如：A001 或 user@mail.com"
               required
             />
           </div>
