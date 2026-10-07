@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Vivifrail 體能測試系統 (健康監控版)  正在改2.0落地版",
+  "description": "專為長輩設計的身體功能檢測系統，整合身高、體重與年齡數據，協助完成站立、步行與起身測試並紀錄健康指標。",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

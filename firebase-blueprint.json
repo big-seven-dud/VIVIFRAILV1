@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user basic information and health metrics.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "age": { "type": "integer" },
+        "height": { "type": "number" },
+        "weight": { "type": "number" },
+        "gender": { "type": "string", "enum": ["male", "female", "other"] },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["uid", "email", "displayName", "age", "height", "weight", "gender", "createdAt"]
+    },
+    "TestResult": {
+      "title": "Test Results",
+      "description": "Stores SPPB physical test results.",
+      "type": "object",
+      "properties": {
+        "balanceScore": { "type": "integer" },
+        "walkScore": { "type": "integer" },
+        "chairScore": { "type": "integer" },
+        "rawWalkTime": { "type": "number" },
+        "rawChairTime": { "type": "number" },
+        "timestamp": { "type": "integer" },
+        "userId": { "type": "string" },
+        "fallRisk": {
+          "type": "object",
+          "properties": {
+            "recentFalls": { "type": "boolean" },
+            "tugOver20": { "type": "boolean" },
+            "walk6mOver7_5": { "type": "boolean" },
+            "cognitiveDecline": { "type": "boolean" },
+            "hasRisk": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["balanceScore", "walkScore", "chairScore", "rawWalkTime", "rawChairTime", "timestamp", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document identified by Auth UID."
+    },
+    "/sppb_records/{recordId}": {
+      "schema": "TestResult",
+      "description": "SPPB physical test records."
+    },
+    "/game_results/{resultId}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "gameType": { "type": "string" },
+          "level": { "type": "string" },
+          "score": { "type": "number" },
+          "details": { "type": "object" },
+          "userId": { "type": "string" },
+          "timestamp": { "type": "integer" }
+        }
+      },
+      "description": "Game performance records."
+    },
+    "/fall_risk_surveys/{surveyId}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string" },
+          "timestamp": { "type": "integer" }
+        }
+      },
+      "description": "Fall risk assessment survey results."
+    },
+    "/test_connection/{pingId}": {
+      "schema": { "type": "object", "properties": { "status": { "type": "string" } } },
+      "description": "Used for connection health checks."
+    }
+  }
+}
