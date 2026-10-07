@@ -63,10 +63,13 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
   const [bubbleClearedCount, setBubbleClearedCount] = useState(0);
   const [showResult, setShowResult] = useState(false);
 
-  // Hand state
-  const [handPinching, setHandPinching] = useState(false);
-  const [pinchProgress, setPinchProgress] = useState(0); // 0 to 1 based on pinch closeness
+  type GestureState = 'OPEN' | 'PINCHING' | 'ARMED';
 
+// Hand state
+  const [handPinching, setHandPinching] = useState(false);
+  const [pinchProgress, setPinchProgress] = useState(0);
+  const [pullPower, setPullPower] = useState(0);
+  const [gestureState, setGestureState] = useState<GestureState>('OPEN');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameActive = useRef(true);
@@ -86,17 +89,19 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
   const launcherPos = useRef({ x: 300, y: 680 }); // Centered launcher base coordinates
 
   // 靈活瞄準與射擊狀態 (支援手指直覺瞄準、懸停蓄力、雙指捏合、滑鼠/觸控點擊)
-  const currentAimAngle = useRef(-Math.PI / 2); // 預設朝上 (-90度)
-  const lastAimAngle = useRef(-Math.PI / 2);
-  const dwellProgress = useRef(0); // 懸停蓄力進度 0.0 ~ 1.0
+  const currentAimAngle = useRef(-Math.PI / 2);
+  const lockedAimAngle = useRef(-Math.PI / 2);
   const lastFireTime = useRef(0);
   const handDetected = useRef(false);
-
-  // Hand tracking physics
-  const pointerPos = useRef({ x: 0.5, y: 0.5, z: 0 }); // Current virtual hand pointer (mirrored)
+  
+  // Hand tracking
+  const pointerPos = useRef({ x: 0.5, y: 0.5, z: 0 });
   const isPinching = useRef(false);
-  const isDraggingSlingshot = useRef(false);
-  const dragVector = useRef({ x: 0, y: 0 }); // Pull vector
+  
+  const pinchStart = useRef<{ x: number; y: number } | null>(null);
+  
+  const gestureStateRef = useRef<GestureState>('OPEN');
+  const pullPowerRef = useRef(0);
 
   // Particle effects & falling avalanche elements
   const particles = useRef<Particle[]>([]);
@@ -237,8 +242,7 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
       color: nextBulletColor.current
     };
 
-    // 射擊後重置懸停進度
-    dwellProgress.current = 0;
+   
 
     // Cycle next weapon color
     const activeColors = COLORS.slice(0, config.level === 'A' ? 3 : config.level === 'B' ? 4 : config.level === 'C' ? 5 : 6);
@@ -685,41 +689,120 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
     });
 
     // I. Draw virtual Cyber UI hand pointer & Dwell auto-shoot progress
+// I. Hand aiming / slingshot visual feedback
     if (handDetected.current && pointerPos.current) {
       const pX = pointerPos.current.x * canvas.width;
       const pY = pointerPos.current.y * canvas.height;
-
+    
+      const currentGesture = gestureStateRef.current;
+      const power = pullPowerRef.current;
+    
       ctx.save();
-      // Outer targeting circle
+    
+      // 手部游標
       ctx.beginPath();
-      ctx.strokeStyle = isPinching.current ? '#ef4444' : '#38bdf8';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle =
+        currentGesture === 'ARMED'
+          ? '#22c55e'
+          : currentGesture === 'PINCHING'
+            ? '#f59e0b'
+            : '#38bdf8';
+    
+      ctx.lineWidth = 4;
       ctx.arc(pX, pY, 24, 0, Math.PI * 2);
       ctx.stroke();
-
-      // 懸停蓄力圓環進度 (0% ~ 100%)
-      if (dwellProgress.current > 0.05) {
-        ctx.beginPath();
-        ctx.arc(pX, pY, 32, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * dwellProgress.current);
-        ctx.strokeStyle = '#4ade80';
-        ctx.lineWidth = 5;
-        ctx.stroke();
-      }
-
-      // Center reticle dot
+    
       ctx.beginPath();
-      ctx.fillStyle = isPinching.current ? '#ef4444' : '#38bdf8';
-      ctx.arc(pX, pY, 5, 0, Math.PI * 2);
+      ctx.fillStyle =
+        currentGesture === 'ARMED'
+          ? '#22c55e'
+          : currentGesture === 'PINCHING'
+            ? '#f59e0b'
+            : '#38bdf8';
+    
+      ctx.arc(pX, pY, 6, 0, Math.PI * 2);
       ctx.fill();
-
-      // Text label for accessible UI state
-      ctx.font = 'bold 14px sans-serif';
-      ctx.fillStyle = isPinching.current ? '#f87171' : '#bae6fd';
+    
+      // 捏住之後畫出拉弓線
+      if (
+        pinchStart.current &&
+        currentGesture !== 'OPEN'
+      ) {
+        const startX =
+          pinchStart.current.x * canvas.width;
+    
+        const startY =
+          pinchStart.current.y * canvas.height;
+    
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(pX, pY);
+    
+        ctx.strokeStyle =
+          currentGesture === 'ARMED'
+            ? '#22c55e'
+            : '#f59e0b';
+    
+        ctx.lineWidth = 7;
+        ctx.stroke();
+    
+        // 拉力條
+        const barWidth = 140;
+        const barHeight = 14;
+    
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(
+          pX - barWidth / 2,
+          pY - 60,
+          barWidth,
+          barHeight
+        );
+    
+        ctx.fillStyle =
+          currentGesture === 'ARMED'
+            ? '#22c55e'
+            : '#f59e0b';
+    
+        ctx.fillRect(
+          pX - barWidth / 2,
+          pY - 60,
+          barWidth * (power / 100),
+          barHeight
+        );
+      }
+    
+      ctx.font = 'bold 18px sans-serif';
       ctx.textAlign = 'center';
-      ctx.shadowColor = 'rgba(0,0,0,0.8)';
-      ctx.shadowBlur = 4;
-      const dwellText = dwellProgress.current > 0.2 ? `⚡ 蓄力發射中 ${Math.round(dwellProgress.current * 100)}%` : '🎯 指向目標 | 捏合或停頓發射';
-      ctx.fillText(dwellText, pX, pY - 36);
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur = 6;
+    
+      if (currentGesture === 'OPEN') {
+        ctx.fillStyle = '#bae6fd';
+        ctx.fillText(
+          '左右移動瞄準',
+          pX,
+          pY - 38
+        );
+      }
+    
+      if (currentGesture === 'PINCHING') {
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText(
+          `向下拉 ${power}%`,
+          pX,
+          pY - 78
+        );
+      }
+    
+      if (currentGesture === 'ARMED') {
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText(
+          `拉力 ${power}%・放開發射！`,
+          pX,
+          pY - 78
+        );
+      }
+    
       ctx.restore();
     }
 
@@ -729,80 +812,187 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
   // Process MediaPipe Hands frame callback - 升級為直覺指向 + 捏合開火 + 懸停自動發射
   const onHandsResults = (results: any) => {
     if (!canvasRef.current || !videoRef.current || !stateRef.current.gameActive) return;
+  
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+  
+    const PINCH_CLOSE = 0.085;
+    const PINCH_RELEASE = 0.11;
+  
+    // 捏住後向下拉至少畫面高度的 6%
+    const MIN_PULL_DISTANCE = 0.06;
+  
+    // 拉到約 16% 視為滿蓄力
+    const MAX_PULL_DISTANCE = 0.16;
+  
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       handDetected.current = true;
+  
       const landmarks = results.multiHandLandmarks[0];
-
-      // 鏡像座標映射：1 - x
-      const mirroredX = 1 - landmarks[8].x; 
-      const indexY = landmarks[8].y;
-
-      const px = mirroredX * canvas.width;
-      const py = indexY * canvas.height;
-
+  
+      const thumb = landmarks[4];
+      const index = landmarks[8];
+  
+      // 鏡像後食指座標
+      const mirroredX = 1 - index.x;
+      const indexY = index.y;
+  
       pointerPos.current = {
         x: mirroredX,
         y: indexY,
-        z: landmarks[8].z
+        z: index.z
       };
-
-      // 1. 直覺計算目標瞄準角：從發射台連線至食指位置
-      const dx = px - launcherPos.current.x;
-      const dy = py - launcherPos.current.y;
-      
-      let targetA = Math.atan2(dy, dx);
-      // 確保瞄準朝上
-      if (targetA > 0) {
-        targetA = dx < 0 ? -Math.PI + 0.2 : -0.2;
-      } else {
-        targetA = Math.max(-Math.PI + 0.18, Math.min(-0.18, targetA));
+  
+      // --------------------------------------------------
+      // 1. OPEN 狀態：只用左右位置控制瞄準
+      // --------------------------------------------------
+      if (!isPinching.current) {
+        const horizontal = Math.max(
+          -1,
+          Math.min(1, (mirroredX - 0.5) * 2)
+        );
+  
+        // -150° ~ -30°
+        const targetAngle =
+          -Math.PI / 2 +
+          horizontal * (Math.PI / 3);
+  
+        // 平滑瞄準
+        currentAimAngle.current +=
+          (targetAngle - currentAimAngle.current) * 0.25;
       }
-
-      // 平滑濾波瞄準角 (防止手抖晃動)
-      currentAimAngle.current = currentAimAngle.current + (targetA - currentAimAngle.current) * 0.35;
-
-      // 2. 雙指捏合判斷 (放寬門檻至 0.085，長輩易於操作)
-      const thumb = landmarks[4];
-      const index = landmarks[8];
-      const distance = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-
-      const closePct = Math.max(0, Math.min(100, Math.round((0.18 - distance) * 550)));
+  
+      // --------------------------------------------------
+      // 2. Pinch distance
+      // --------------------------------------------------
+      const distance = Math.hypot(
+        thumb.x - index.x,
+        thumb.y - index.y
+      );
+  
+      const closePct = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round((0.18 - distance) * 550)
+        )
+      );
+  
       setPinchProgress(closePct);
-
-      if (distance < 0.085) {
-        if (!isPinching.current) {
-          isPinching.current = true;
-          setHandPinching(true);
-          // 捏合瞬間即刻射出彈珠！
-          fireBullet();
-        }
-      } else {
-        if (isPinching.current) {
-          isPinching.current = false;
-          setHandPinching(false);
-        }
+  
+      // 使用拇指與食指中點當作拉弓位置
+      const pinchX =
+        1 - ((thumb.x + index.x) / 2);
+  
+      const pinchY =
+        (thumb.y + index.y) / 2;
+  
+      // --------------------------------------------------
+      // 3. OPEN → PINCHING
+      // --------------------------------------------------
+      if (
+        distance < PINCH_CLOSE &&
+        !isPinching.current
+      ) {
+        isPinching.current = true;
+        setHandPinching(true);
+  
+        pinchStart.current = {
+          x: pinchX,
+          y: pinchY
+        };
+  
+        // 捏住當下鎖定方向
+        lockedAimAngle.current =
+          currentAimAngle.current;
+  
+        gestureStateRef.current = 'PINCHING';
+        setGestureState('PINCHING');
+  
+        pullPowerRef.current = 0;
+        setPullPower(0);
+  
+        return;
       }
-
-      // 3. 智慧懸停自動蓄力射擊 (手部指向某角度停頓約 0.7 秒即自動發射)
-      const angleDiff = Math.abs(currentAimAngle.current - lastAimAngle.current);
-      if (angleDiff < 0.05) {
-        dwellProgress.current += 0.04;
-        if (dwellProgress.current >= 1.0) {
-          fireBullet();
-          dwellProgress.current = 0;
+  
+      // --------------------------------------------------
+      // 4. 保持捏住 → 計算向下拉距離
+      // --------------------------------------------------
+      if (
+        isPinching.current &&
+        distance <= PINCH_RELEASE &&
+        pinchStart.current
+      ) {
+        const pullDistance = Math.max(
+          0,
+          pinchY - pinchStart.current.y
+        );
+  
+        const power = Math.round(
+          Math.min(
+            1,
+            pullDistance / MAX_PULL_DISTANCE
+          ) * 100
+        );
+  
+        pullPowerRef.current = power;
+        setPullPower(power);
+  
+        if (pullDistance >= MIN_PULL_DISTANCE) {
+          gestureStateRef.current = 'ARMED';
+          setGestureState('ARMED');
+        } else {
+          gestureStateRef.current = 'PINCHING';
+          setGestureState('PINCHING');
         }
-      } else {
-        dwellProgress.current = Math.max(0, dwellProgress.current - 0.06);
-        lastAimAngle.current = currentAimAngle.current;
+  
+        return;
       }
-
+  
+      // --------------------------------------------------
+      // 5. 放開 → 只有 ARMED 才能射
+      // --------------------------------------------------
+      if (
+        isPinching.current &&
+        distance > PINCH_RELEASE
+      ) {
+        const shouldFire =
+          gestureStateRef.current === 'ARMED';
+  
+        if (shouldFire) {
+          fireBullet(lockedAimAngle.current);
+        }
+  
+        // 無論有沒有射擊都重置
+        isPinching.current = false;
+        setHandPinching(false);
+  
+        pinchStart.current = null;
+  
+        gestureStateRef.current = 'OPEN';
+        setGestureState('OPEN');
+  
+        pullPowerRef.current = 0;
+        setPullPower(0);
+  
+        return;
+      }
+  
     } else {
+      // 手離開鏡頭時不要誤射
       handDetected.current = false;
-      dwellProgress.current = 0;
+  
+      isPinching.current = false;
+      setHandPinching(false);
+  
+      pinchStart.current = null;
+  
+      gestureStateRef.current = 'OPEN';
+      setGestureState('OPEN');
+  
+      pullPowerRef.current = 0;
+      setPullPower(0);
+  
+      setPinchProgress(0);
     }
   };
 
@@ -861,7 +1051,7 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
           await camera.start();
           console.log("MediaPipe Camera successfully started.");
           setIsInitializing(false);
-          speak("泡泡射手手感載入完畢！請做出捏合手勢拉開橡皮筋，然後鬆開手指發射泡泡吧。");
+          speak("泡泡射擊開始。左右移動食指瞄準，用拇指和食指捏住泡泡，向下拉，放開即可發射。");
         }
       } catch (err: any) {
         console.error("Camera startup error:", err);
@@ -1016,7 +1206,7 @@ const BubbleShooterGameView: React.FC<Props> = ({ settings, config, onComplete, 
               <span className="text-3xl animate-bounce">👌</span>
               <div>
                 <p className="text-xs font-black text-indigo-300">AI 視覺手勢辨識中</p>
-                <p className="text-[11px] font-bold text-slate-300">食指指向瞄準 · 雙指捏合或懸停射擊</p>
+                <p className="text-[11px] font-bold text-slate-300">食指左右移動瞄準 · 捏住向下拉 · 放開發射</p>
               </div>
             </div>
             
